@@ -29,15 +29,17 @@ def detect_and_decode_barcode(image):
     # Convert image from BGR to RGB (Matplotlib uses RGB)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    plt.imshow(image_rgb)
-    plt.axis('off')
-    plt.show()
+    # plt.imshow(image_rgb)
+    # plt.axis('off')
+    # # plt.show()
+    # plt.savefig('detected_barcodes.jpg', bbox_inches='tight')
+    cv2.imwrite('detected_barcodes_cv2.jpg', image_rgb)
  
 # Main
 if __name__ == '__main__':
  
   # Read image
-  path = '/Users/nova98/Documents/Nova/Spectrolysis/3D_localization/barcode.png'
+  path = '/Users/nova98/Documents/Nova/Marker-detection/new_code1.png'
   # Read input image
   image = cv2.imread(path)
 

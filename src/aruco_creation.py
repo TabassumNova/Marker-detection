@@ -16,6 +16,7 @@ python gen_pattern.py -o out.svg -r 11 -c 8 -T circles -s 20.0 -R 5.0 -u mm -w 2
 -m, --markers - list of cells with markers for the radon checkerboard
 -p, --aruco_marker_size - aruco markers size for ChAruco pattern (default 10.0)
 -f, --dict_file - file name of custom aruco dictionary for ChAruco pattern
+-i, --marker_id - marker ID for ChAruco pattern (default 0, that means it will start from 0)
 -H, --help - show help
 """
 
@@ -27,7 +28,7 @@ from svgfig import *
 
 
 class PatternMaker:
-    def __init__(self, cols, rows, output, units, square_size, radius_rate, page_width, page_height, markers, aruco_marker_size, dict_file):
+    def __init__(self, cols, rows, output, units, square_size, radius_rate, page_width, page_height, markers, aruco_marker_size, dict_file, marker_id):
         self.cols = cols
         self.rows = rows
         self.output = output
@@ -39,7 +40,7 @@ class PatternMaker:
         self.markers = markers
         self.aruco_marker_size = aruco_marker_size #for charuco boards only
         self.dict_file = dict_file
-
+        self.marker_id = marker_id
         self.g = SVG("g")  # the svg group container
 
     def make_circles_pattern(self):
@@ -186,7 +187,7 @@ class PatternMaker:
         yspacing = (self.height - self.rows * self.square_size) / 2.0
 
         ch_ar_border = (self.square_size - self.aruco_marker_size)/2
-        marker_id = 20
+        marker_id = self.marker_id
         marker_id_org = marker_id
         for y in range(0, self.rows):
             for x in range(0, self.cols):
@@ -252,6 +253,8 @@ def main():
                         action="store", dest="aruco_marker_size", type=float)
     parser.add_argument("-f", "--dict_file", help="file name of custom aruco dictionary for ChAruco pattern", default="DICT_ARUCO_ORIGINAL.json",
                         action="store", dest="dict_file", type=str)
+    parser.add_argument("-i", "--marker_id", help="marker ID for ChAruco pattern (default 0, that means it will start from 0)",
+                         default=0, action="store", dest="marker_id", type=int)
     args = parser.parse_args()
 
     show_help = args.show_help
@@ -267,7 +270,7 @@ def main():
     radius_rate = args.radius_rate
     aruco_marker_size = args.aruco_marker_size
     dict_file = args.dict_file
-
+    marker_id = args.marker_id
     if 'page_width' and 'page_height' in args:
         page_width = args.page_width
         page_height = args.page_height
@@ -289,7 +292,7 @@ def main():
             else:
                 raise ValueError("The marker {},{} is outside the checkerboard".format(x, y))
 
-    pm = PatternMaker(columns, rows, output, units, square_size, radius_rate, page_width, page_height, markers, aruco_marker_size, dict_file)
+    pm = PatternMaker(columns, rows, output, units, square_size, radius_rate, page_width, page_height, markers, aruco_marker_size, dict_file, marker_id)
     # dict for easy lookup of pattern type
     mp = {"circles": pm.make_circles_pattern, "acircles": pm.make_acircles_pattern,
           "checkerboard": pm.make_checkerboard_pattern, "radon_checkerboard": pm.make_radon_checkerboard_pattern,
