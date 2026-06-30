@@ -37,7 +37,7 @@ import hylite
 from hylite import io
 
 
-def getAruco(image, border_detect = False):
+def getAruco(image, border_detect = False, visualisation = True):
     # Common ArUco dictionaries to try (prioritize smaller sizes for your marker)
     ARUCO_DICT = {
         "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
@@ -83,7 +83,7 @@ def getAruco(image, border_detect = False):
             # Process all borders if requested
             if border_detect:
                 detect_white_border2(corners, image)  # Example for the first marker
-            else:
+            if visualisation:
                 # Resize for display if large
                 display = cv2.resize(image, (960, max(540, int(h * 960 / w))))
                 cv2.imshow('Detected ArUco Markers', display)
@@ -355,7 +355,8 @@ def temp():
             print("No markers detected for border display.")
 
 if __name__ == "__main__":
-    path = '/Users/nova98/Documents/Nova/Marker-detection/test/img12.png'
+    path = '/Users/nova98/Documents/Nova/untitled folder/20260609/ArucoBoxwith3d_6cm_Dir6_0.5ms_projection.png'
     image = cv2.imread(path)
     marker_dict = getAruco(image, border_detect=False)
+    pass
     # temp()
