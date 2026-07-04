@@ -7,23 +7,7 @@ import hylite
 from hylite import io
 
 
-def getAruco(image, visualisation = True):
-    # Common ArUco dictionaries to try (prioritize smaller sizes for your marker)
-    ARUCO_DICT = {
-        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
-        # "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
-        # "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
-        # "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
-        # "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-        # "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL
-    }
-
-    # ap = argparse.ArgumentParser()
-    # ap.add_argument("-i", "--image", required=True, help="path to input image")
-    # args = vars(ap.parse_args())
-    
-
-    # image = cv2.imread(path)
+def getAruco(image, aruco_dict_id, visualisation = True):
     if image is None:
         print("Error: Could not load image.")
         sys.exit(1)
@@ -36,67 +20,63 @@ def getAruco(image, visualisation = True):
 
     print("[INFO] Detecting markers...")
     marker_dict = {}
-    for dict_name, dict_id in ARUCO_DICT.items():
-        print(f"Trying {dict_name}...")
-        aruco_dict = cv2.aruco.getPredefinedDictionary(dict_id)
-        detector = cv2.aruco.ArucoDetector(aruco_dict, aruco_params)
-        corners, ids, rejected = detector.detectMarkers(gray)
+    aruco_dict = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
+    detector = cv2.aruco.ArucoDetector(aruco_dict, aruco_params)
+    corners, ids, rejected = detector.detectMarkers(gray)
 
-        inner_vis = image.copy()
-        outer_vis = image.copy()
-        if ids is not None and len(ids) > 0:
-            print(f"[INFO] Detected {len(ids)} markers using {dict_name}")
-            print("Marker IDs:", ids.flatten().tolist())
-            # Draw only detected marker inner corners on inner_vis.
-            cv2.aruco.drawDetectedMarkers(inner_vis, corners, ids)
+    inner_vis = image.copy()
+    outer_vis = image.copy()
+    if ids is not None and len(ids) > 0:
+        print(f"[INFO] Detected {len(ids)} markers")
+        print("Marker IDs:", ids.flatten().tolist())
+        # Draw only detected marker inner corners on inner_vis.
+        cv2.aruco.drawDetectedMarkers(inner_vis, corners, ids)
 
-            # Always detect border for each marker id and store both inner/outer corners.
-            for marker_id, marker_corners in zip(ids.flatten(), corners):
-                marker_id = int(marker_id)
-                inner_pts = marker_corners[0].astype(np.int32)
-                outer_pts = detect_white_border(marker_corners, image)
-                marker_dict[marker_id] = {
-                    "inner_corners": inner_pts.copy(),
-                    "outer_pts": outer_pts.copy() if outer_pts is not None else None
-                }
+        # Always detect border for each marker id and store both inner/outer corners.
+        for marker_id, marker_corners in zip(ids.flatten(), corners):
+            marker_id = int(marker_id)
+            inner_pts = marker_corners[0].astype(np.int32)
+            outer_pts = detect_white_border(marker_corners, image)
+            marker_dict[marker_id] = {
+                "inner_corners": inner_pts.copy(),
+                "outer_pts": outer_pts.copy() if outer_pts is not None else None
+            }
 
-                if outer_pts is not None:
-                    cv2.polylines(outer_vis, [outer_pts], True, (0, 255, 0), 2)
-                    for i, pt in enumerate(outer_pts):
-                        cv2.circle(outer_vis, tuple(pt), 2, (0, 0, 255), -1)
-                        cv2.putText(outer_vis, str(i), tuple(pt + 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            if outer_pts is not None:
+                cv2.polylines(outer_vis, [outer_pts], True, (0, 255, 0), 2)
+                for i, pt in enumerate(outer_pts):
+                    cv2.circle(outer_vis, tuple(pt), 2, (0, 0, 255), -1)
 
-                cv2.putText(
-                    inner_vis,
-                    f"ID {marker_id}",
-                    tuple(inner_pts[0] + np.array([0, -8])),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 255, 255),
-                    1
-                )
-                cv2.putText(
-                    outer_vis,
-                    f"ID {marker_id}",
-                    tuple(inner_pts[0] + np.array([0, -8])),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 255, 255),
-                    1
-                )
+            cv2.putText(
+                inner_vis,
+                f"{marker_id}",
+                tuple(inner_pts[0] + np.array([0, -8])),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1
+            )
+            cv2.putText(
+                outer_vis,
+                f"{marker_id}",
+                tuple(inner_pts[0] + np.array([0, -8])),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1
+            )
 
-            cv2.imwrite('detected_inner_corners.jpg', inner_vis)
-            cv2.imwrite('detected_outer_corners.jpg', outer_vis)
+        cv2.imwrite('detected_inner_corners.jpg', inner_vis)
+        cv2.imwrite('detected_outer_corners.jpg', outer_vis)
 
-            if visualisation:
-                # Final visualization in separate windows.
-                inner_display = cv2.resize(inner_vis, (960, max(540, int(h * 960 / w))))
-                outer_display = cv2.resize(outer_vis, (960, max(540, int(h * 960 / w))))
-                cv2.imshow('Detected ArUco Inner Corners', inner_display)
-                cv2.imshow('Detected ArUco Outer Corners', outer_display)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
-            break
+        if visualisation:
+            # Final visualization in separate windows.
+            inner_display = cv2.resize(inner_vis, (960, max(540, int(h * 960 / w))))
+            outer_display = cv2.resize(outer_vis, (960, max(540, int(h * 960 / w))))
+            cv2.imshow('Detected ArUco Inner Corners', inner_display)
+            cv2.imshow('Detected ArUco Outer Corners', outer_display)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
     else:
         print("[INFO] No markers detected. Check image quality, lighting, or try custom dictionary. Rejected candidates:", len(rejected))
     return marker_dict
@@ -149,5 +129,5 @@ def detect_white_border(corner, image, pad=20):
 if __name__ == "__main__":
     path = '/Users/nova98/Documents/Nova/Helios+/FX10/20260609/6cm_Cube/FX10_ArucoBoxWith3D_6cm_2026-06-09_09-20-17/FX10_ArucoBoxWith3D_6cm_2026-06-09_09-20-17.png'
     image = cv2.imread(path)
-    marker_dict = getAruco(image)
+    marker_dict = getAruco(image, aruco_dict_id=cv2.aruco.DICT_4X4_1000)
     pass
