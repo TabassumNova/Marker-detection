@@ -127,7 +127,7 @@ def detect_white_border(corner, image, pad=20):
 
 
 if __name__ == "__main__":
-    path = '/Users/nova98/Documents/Nova/Helios+/FX10/20260609/6cm_Cube/FX10_ArucoBoxWith3D_6cm_2026-06-09_09-20-17/FX10_ArucoBoxWith3D_6cm_2026-06-09_09-20-17.png'
+    path = '/Users/nova98/Documents/Nova/Helios+/FX10/20260410/FX10_Test_2026-04-10_11-23-40/FX10_Test_2026-04-10_11-23-40.png'
     image = cv2.imread(path)
     marker_dict = getAruco(image, aruco_dict_id=cv2.aruco.DICT_4X4_1000)
     pass
