@@ -2,9 +2,6 @@ import cv2
 import argparse
 import sys
 import numpy as np
-from hylite.analyse import band_ratio
-import hylite
-from hylite import io
 
 
 def getAruco(image, aruco_dict_id, visualisation = True):
@@ -39,7 +36,7 @@ def getAruco(image, aruco_dict_id, visualisation = True):
             outer_pts = detect_white_border(marker_corners, image)
             marker_dict[marker_id] = {
                 "inner_corners": inner_pts.copy(),
-                "outer_pts": outer_pts.copy() if outer_pts is not None else None
+                "outer_corners": outer_pts.copy() if outer_pts is not None else None
             }
 
             if outer_pts is not None:
