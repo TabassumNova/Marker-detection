@@ -140,18 +140,20 @@ def filter_marker_outliers(marker_dict, distance_sigma=2.0, area_sigma=2.0, min_
             remove_ids.append(marker_id)
 
     for marker_id in remove_ids:
-        marker_dict.pop(marker_id, None)
+        # Keep marker entry and inner corners, but blank out invalid outer corners.
+        if marker_id in marker_dict:
+            marker_dict[marker_id]["outer_corners"] = None
 
     if debug:
         print(
             "[DEBUG] Outlier filter:",
             f"total={len(metrics)}",
-            f"removed={len(remove_ids)}",
+            f"outer_corners_cleared={len(remove_ids)}",
             f"distance(mean={d_mean:.3f}, std={d_std:.3f})",
             f"bbox_gap(mean={a_mean:.3f}, std={a_std:.3f})"
         )
         if remove_ids:
-            print(f"[DEBUG] Removed marker IDs: {sorted(remove_ids)}")
+            print(f"[DEBUG] Cleared outer corners for marker IDs: {sorted(remove_ids)}")
 
     return marker_dict
 
