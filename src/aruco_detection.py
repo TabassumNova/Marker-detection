@@ -221,6 +221,57 @@ def find_large_contour(contours):
             best = c
     return best
 
+
+def close_contour_if_needed(contour):
+    """Return a closed contour by repeating the first point if necessary."""
+    pts = np.asarray(contour)
+    if pts.shape[0] == 0:
+        return pts
+
+    first_point = pts[0]
+    last_point = pts[-1]
+
+    if np.array_equal(first_point, last_point):
+        return pts
+    print("[DEBUG] Closing contour by repeating first point.")
+    return np.concatenate([pts, first_point[np.newaxis, ...]], axis=0)
+
+
+def is_valid_outer_contour(contour, approx_eps_ratio=0.02, min_area_ratio=0.65, debug=False):
+    """Check whether a contour is a plausible outer white border.
+
+    The contour must:
+    - occupy enough of its bounding box area to look reasonably 
+    rectangular
+    """
+
+    # contour = close_contour_if_needed(contour)
+
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter <= 0:
+        return False
+
+    # approx = cv2.approxPolyDP(contour, approx_eps_ratio * perimeter, True)
+    # if len(approx) != 4:
+    #     if debug:
+    #         print(f"[DEBUG] Rejected contour: approx vertices={len(approx)} (expected 4).")
+    #     return False
+
+    contour_area = float(abs(cv2.contourArea(contour, True)))
+    x, y, w, h = cv2.boundingRect(contour)
+    bbox_area = float(w * h)
+    if bbox_area <= 0:
+        return False
+
+    area_ratio = contour_area / bbox_area
+    if debug:
+        print(
+            f"[DEBUG] Contour validation: contour_area={contour_area:.2f}, "
+            f"bbox_area={bbox_area:.2f}, ratio={area_ratio:.3f}"
+        )
+
+    return area_ratio >= min_area_ratio
+
 def detect_white_border(corner, image, pad=20, debug=False):
     """Detect border points for a single ArUco marker corner set."""
     marker_corners = corner[0].astype(np.float32)
@@ -267,9 +318,11 @@ def detect_white_border(corner, image, pad=20, debug=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    '''
-    TODO: step by step debug this part
-    '''
+    if not is_valid_outer_contour(best, debug=debug):
+        if debug:
+            print("[DEBUG] Skipping outer border: contour failed quadrilateral/area validation.")
+        return None
+
     rect = cv2.minAreaRect(best)
     box = cv2.boxPoints(rect)
     outer_refined = box.astype(np.float32)
@@ -285,21 +338,6 @@ def detect_white_border(corner, image, pad=20, debug=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-
-    '''
-    task: Check if the best contour is a quadrilateral.
-    this part is not working
-    TODO: Check the contoured area and compare it with the area of the 
-    bounding box to ensure that the contour is not too irregular.
-    '''
-    '''
-    approx = cv2.approxPolyDP(best, 0.02 * cv2.arcLength(best, True), True)
-    if len(approx) != 4:
-        if debug:
-            print("[DEBUG] Skipping outer border: best contour is not quadrilateral.")
-        return None
-    '''
-    
 
     return outer_refined.astype(np.int32)
 
