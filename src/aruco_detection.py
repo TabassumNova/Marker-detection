@@ -272,8 +272,20 @@ def is_valid_outer_contour(contour, approx_eps_ratio=0.02, min_area_ratio=0.65, 
 
     return area_ratio >= min_area_ratio
 
-def detect_white_border(corner, image, pad=20, debug=False):
-    """Detect border points for a single ArUco marker corner set."""
+def detect_white_border(corner, image, pad=20, morph_closing=False, debug=False):
+    """
+    Detect border points for a single ArUco marker corner set.
+    Args:
+        corner: 4x2 array of inner corners (marker corners).
+        image: Input image (BGR).
+        pad: Padding around the marker bounding box for ROI extraction.
+        morph_closing: Whether to apply morphological closing to the edge image.
+        debug: Whether to show debug visualizations.
+    Returns:
+        4x2 array of outer corners (border points) if detected, otherwise None.
+    
+    """
+
     marker_corners = corner[0].astype(np.float32)
     x, y, w, h = cv2.boundingRect(marker_corners)
     x0 = max(0, x - pad)
@@ -284,6 +296,9 @@ def detect_white_border(corner, image, pad=20, debug=False):
     roi = image[y0:y1, x0:x1].copy()
     gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray_roi, 50, 150)
+    if morph_closing:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
     if debug:
         cv2.imshow("White Border Debug - ROI", roi)
