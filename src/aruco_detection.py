@@ -4,6 +4,43 @@ import sys
 import numpy as np
 
 
+def serialize_corners_clockwise(corners):
+    """Return 4 corners in clockwise order: top-left, top-right, bottom-right, bottom-left."""
+    pts = np.asarray(corners, dtype=np.float32).reshape(-1, 2)
+    if pts.shape[0] != 4:
+        return pts.astype(np.int32)
+
+    ordered = np.zeros((4, 2), dtype=np.float32)
+    s = pts.sum(axis=1)
+    d = np.diff(pts, axis=1).reshape(-1)
+
+    ordered[0] = pts[np.argmin(s)]
+    ordered[2] = pts[np.argmax(s)]
+    ordered[1] = pts[np.argmin(d)]
+    ordered[3] = pts[np.argmax(d)]
+    return ordered.astype(np.int32)
+
+
+def get_effective_outer_corners(marker_data, fallback_mode="strict"):
+    """Return usable outer corners while preserving raw outer_corners semantics.
+
+    fallback_mode:
+    - "strict": return None when outer_corners is missing.
+    - "inner_as_outer": return inner_corners copy when outer_corners is missing.
+    - "nan_sentinel": return 4x2 NaN array when outer_corners is missing.
+    """
+    outer = marker_data.get("outer_corners")
+    if outer is not None:
+        return outer.astype(np.float32), False
+
+    inner = marker_data.get("inner_corners")
+    if fallback_mode == "inner_as_outer" and inner is not None:
+        return inner.astype(np.float32), True
+    if fallback_mode == "nan_sentinel":
+        return np.full((4, 2), np.nan, dtype=np.float32), True
+    return None, True
+
+
 def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
     if image is None:
         print("Error: Could not load image.")
@@ -28,11 +65,15 @@ def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
         # Always detect border for each marker id and store both inner/outer corners.
         for marker_id, marker_corners in zip(ids.flatten(), corners):
             marker_id = int(marker_id)
-            inner_pts = marker_corners[0].astype(np.int32)
-            outer_pts = detect_white_border(marker_corners, image, debug=debug)
+            inner_pts = serialize_corners_clockwise(marker_corners[0])
+            outer_pts_raw = detect_white_border(marker_corners, image, debug=debug)
+            outer_pts = serialize_corners_clockwise(outer_pts_raw) if outer_pts_raw is not None else None
+            # Make sure that the inner and outer corners are serialized clockwise
             marker_dict[marker_id] = {
                 "inner_corners": inner_pts.copy(),
-                "outer_corners": outer_pts.copy() if outer_pts is not None else None
+                "outer_corners": outer_pts.copy() if outer_pts is not None else None,
+                "outer_valid": outer_pts is not None,
+                "outer_reason": "detected" if outer_pts is not None else "non_rectangular_or_not_found"
             }
 
         refined_marker_dict = filter_marker_outliers(marker_dict, debug=debug)
@@ -42,15 +83,17 @@ def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
         outer_vis = image.copy()
         for marker_id, marker_data in refined_marker_dict.items():
             inner_pts = marker_data["inner_corners"]
-            outer_pts = marker_data["outer_corners"]
+            outer_pts, is_fallback = get_effective_outer_corners(marker_data, fallback_mode="inner_as_outer")
 
             cv2.polylines(inner_vis, [inner_pts], True, (255, 255, 0), 2)
             for pt in inner_pts:
                 cv2.circle(inner_vis, tuple(pt), 2, (0, 255, 255), -1)
 
             if outer_pts is not None:
-                cv2.polylines(outer_vis, [outer_pts], True, (0, 255, 0), 2)
-                for pt in outer_pts:
+                outer_pts_i32 = outer_pts.astype(np.int32)
+                color = (0, 165, 255) if is_fallback else (0, 255, 0)
+                cv2.polylines(outer_vis, [outer_pts_i32], True, color, 2)
+                for pt in outer_pts_i32:
                     cv2.circle(outer_vis, tuple(pt), 2, (0, 0, 255), -1)
 
             cv2.putText(
@@ -72,8 +115,8 @@ def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
                 1
             )
 
-        cv2.imwrite('detected_inner_corners.jpg', inner_vis)
-        cv2.imwrite('detected_outer_corners.jpg', outer_vis)
+        # cv2.imwrite('detected_inner_corners.jpg', inner_vis)
+        # cv2.imwrite('detected_outer_corners.jpg', outer_vis)
 
         if visualisation:
             # Final visualization in separate windows.
@@ -90,7 +133,7 @@ def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
     return refined_marker_dict
 
 
-def filter_marker_outliers(marker_dict, distance_sigma=2.0, area_sigma=2.0, min_samples=3, debug=False):
+def filter_marker_outliers(marker_dict, distance_sigma=1.0, area_sigma=1.0, min_samples=3, debug=False):
     """Remove markers whose inner/outer relation is an outlier.
 
     Rules:
@@ -116,9 +159,10 @@ def filter_marker_outliers(marker_dict, distance_sigma=2.0, area_sigma=2.0, min_
         ox, oy, ow, oh = cv2.boundingRect(outer_f)
         inner_bbox_area = float(iw * ih)
         outer_bbox_area = float(ow * oh)
-        bbox_area_gap = max(0.0, outer_bbox_area - inner_bbox_area)
+        # bbox_area_gap = max(0.0, outer_bbox_area)
 
-        metrics.append((marker_id, mean_corner_distance, bbox_area_gap))
+        # metrics.append((marker_id, mean_corner_distance, bbox_area_gap))
+        metrics.append((marker_id, mean_corner_distance, outer_bbox_area))
 
     # Not enough markers to build stable mean/std thresholds.
     if len(metrics) < min_samples:
@@ -131,18 +175,26 @@ def filter_marker_outliers(marker_dict, distance_sigma=2.0, area_sigma=2.0, min_
 
     d_mean, d_std = float(np.mean(dvals)), float(np.std(dvals))
     a_mean, a_std = float(np.mean(avals)), float(np.std(avals))
+    print(f"[INFO] Outlier filter: distance(mean={d_mean:.3f}, std={d_std:.3f}), outer_area(mean={a_mean:.3f}, std={a_std:.3f})")
 
     remove_ids = []
     for marker_id, dval, aval in metrics:
+        print(f"[DEBUG] Marker ID {marker_id}: distance={dval:.3f}, outer_area={aval:.3f}")
         distance_outlier = (d_std > 0.0) and (abs(dval - d_mean) > distance_sigma * d_std)
         area_outlier = (a_std > 0.0) and (abs(aval - a_mean) > area_sigma * a_std)
         if distance_outlier or area_outlier:
             remove_ids.append(marker_id)
+            if distance_outlier:
+                print(f"[DEBUG] Marker ID {marker_id} flagged as distance outlier.")
+            if area_outlier:
+                print(f"[DEBUG] Marker ID {marker_id} flagged as area outlier.")
 
     for marker_id in remove_ids:
         # Keep marker entry and inner corners, but blank out invalid outer corners.
         if marker_id in marker_dict:
             marker_dict[marker_id]["outer_corners"] = None
+            marker_dict[marker_id]["outer_valid"] = False
+            marker_dict[marker_id]["outer_reason"] = "outlier"
 
     if debug:
         print(
@@ -215,6 +267,9 @@ def detect_white_border(corner, image, pad=20, debug=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    '''
+    TODO: step by step debug this part
+    '''
     rect = cv2.minAreaRect(best)
     box = cv2.boxPoints(rect)
     outer_refined = box.astype(np.float32)
@@ -230,12 +285,28 @@ def detect_white_border(corner, image, pad=20, debug=False):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+
+    '''
+    task: Check if the best contour is a quadrilateral.
+    this part is not working
+    TODO: Check the contoured area and compare it with the area of the 
+    bounding box to ensure that the contour is not too irregular.
+    '''
+    '''
+    approx = cv2.approxPolyDP(best, 0.02 * cv2.arcLength(best, True), True)
+    if len(approx) != 4:
+        if debug:
+            print("[DEBUG] Skipping outer border: best contour is not quadrilateral.")
+        return None
+    '''
+    
+
     return outer_refined.astype(np.int32)
 
 
 
 if __name__ == "__main__":
-    path = '/Users/nova98/Documents/Nova/Helios+/FX10/20260629/FX10_ArucoCubeAll_test2_2026-06-29_09-35-48/FX10_ArucoCubeAll_test2_2026-06-29_09-35-48.png'
+    path = '/Users/nova98/Documents/Nova/Helios+/FX10/20260629/FX10_ArucoCubeAll_test4_2026-06-29_09-40-12/FX10_ArucoCubeAll_test4_2026-06-29_09-40-12.png'
     image = cv2.imread(path)
-    marker_dict = getAruco(image, aruco_dict_id=cv2.aruco.DICT_4X4_1000, debug=False)
+    marker_dict = getAruco(image, aruco_dict_id=cv2.aruco.DICT_4X4_1000, debug=True)
     pass
