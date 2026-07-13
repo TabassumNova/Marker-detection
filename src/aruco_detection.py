@@ -76,12 +76,12 @@ def getAruco(image, aruco_dict_id, visualisation = True, debug=False):
                 "outer_reason": "detected" if outer_pts is not None else "non_rectangular_or_not_found"
             }
 
-        refined_marker_dict = filter_marker_outliers(marker_dict, debug=debug)
+        # refined_marker_dict = filter_marker_outliers(marker_dict, debug=debug)
 
         # Visualize only refined markers after outlier filtering.
         inner_vis = image.copy()
         outer_vis = image.copy()
-        for marker_id, marker_data in refined_marker_dict.items():
+        for marker_id, marker_data in marker_dict.items():
             inner_pts = marker_data["inner_corners"]
             outer_pts, is_fallback = get_effective_outer_corners(marker_data, fallback_mode="inner_as_outer")
 
@@ -211,6 +211,7 @@ def filter_marker_outliers(marker_dict, distance_sigma=1.0, area_sigma=1.0, min_
 
 
 def find_large_contour(contours):
+    # Find the largest contour considering the bounding box area
     best = None
     best_area = 0.0
     for c in contours:
@@ -222,21 +223,6 @@ def find_large_contour(contours):
     return best
 
 
-def close_contour_if_needed(contour):
-    """Return a closed contour by repeating the first point if necessary."""
-    pts = np.asarray(contour)
-    if pts.shape[0] == 0:
-        return pts
-
-    first_point = pts[0]
-    last_point = pts[-1]
-
-    if np.array_equal(first_point, last_point):
-        return pts
-    print("[DEBUG] Closing contour by repeating first point.")
-    return np.concatenate([pts, first_point[np.newaxis, ...]], axis=0)
-
-
 def is_valid_outer_contour(contour, approx_eps_ratio=0.02, min_area_ratio=0.65, debug=False):
     """Check whether a contour is a plausible outer white border.
 
@@ -244,18 +230,6 @@ def is_valid_outer_contour(contour, approx_eps_ratio=0.02, min_area_ratio=0.65, 
     - occupy enough of its bounding box area to look reasonably 
     rectangular
     """
-
-    # contour = close_contour_if_needed(contour)
-
-    perimeter = cv2.arcLength(contour, True)
-    if perimeter <= 0:
-        return False
-
-    # approx = cv2.approxPolyDP(contour, approx_eps_ratio * perimeter, True)
-    # if len(approx) != 4:
-    #     if debug:
-    #         print(f"[DEBUG] Rejected contour: approx vertices={len(approx)} (expected 4).")
-    #     return False
 
     contour_area = float(abs(cv2.contourArea(contour, True)))
     x, y, w, h = cv2.boundingRect(contour)
@@ -285,26 +259,28 @@ def detect_white_border(corner, image, pad=20, morph_closing=False, debug=False)
         4x2 array of outer corners (border points) if detected, otherwise None.
     
     """
-
+    # Step 1: Extract the ROI with padding
     marker_corners = corner[0].astype(np.float32)
     x, y, w, h = cv2.boundingRect(marker_corners)
     x0 = max(0, x - pad)
     y0 = max(0, y - pad)
     x1 = min(image.shape[1], x + w + pad)
     y1 = min(image.shape[0], y + h + pad)
-
     roi = image[y0:y1, x0:x1].copy()
-    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray_roi, 50, 150)
-    if morph_closing:
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
     if debug:
         cv2.imshow("White Border Debug - ROI", roi)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    # Step 2: Detect the edges
+    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray_roi, 50, 150)
+    if morph_closing:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+    # Step 3: Detect the contours
     contour_result = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = contour_result[0] if len(contour_result) == 2 else contour_result[1]
 
@@ -316,14 +292,11 @@ def detect_white_border(corner, image, pad=20, morph_closing=False, debug=False)
         cv2.destroyAllWindows()
 
     if not contours:
-        # if debug:
-        #     cv2.waitKey(1)
         return None
 
+    # Step 4: Find best contour considering the bounding rect area
     best = find_large_contour(contours)
     if best is None:
-        # if debug:
-        #     cv2.waitKey(1)
         return None
 
     if debug:
@@ -333,6 +306,7 @@ def detect_white_border(corner, image, pad=20, morph_closing=False, debug=False)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    # Filter contours that doesn't pass validation
     if not is_valid_outer_contour(best, debug=debug):
         if debug:
             print("[DEBUG] Skipping outer border: contour failed quadrilateral/area validation.")
